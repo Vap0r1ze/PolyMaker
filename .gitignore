@@ -1,0 +1,6 @@
+.vscode/
+vendor/
+debug
+input.jpg
+output.svg
+*.exe

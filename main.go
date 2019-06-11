@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image/color"
 	"image/jpeg"
 	"math"
 	"math/rand"
@@ -330,7 +331,9 @@ func main() {
 	var lastTr shapes.Triangle
 	for x := 0; x < bounds.Max.X; x++ {
 		for y := 0; y < bounds.Max.Y; y++ {
-			r, g, b, a := img.At(x, y).RGBA()
+			pix := img.At(x, y)
+			ycbcrPix := pix.(color.YCbCr)
+			r, g, b := color.YCbCrToRGB(ycbcrPix.Y, ycbcrPix.Cb, ycbcrPix.Cr)
 			point := shapes.Point{
 				X: x,
 				Y: y,
@@ -339,20 +342,18 @@ func main() {
 			if lastTrIndex > -1 {
 				if lastTr.ContainsPoint(point) {
 					notLast = false
-					tSums[lastTrIndex*4] += int(r*uint32(math.Pow(2, 12))) / 0xFFFF * 0xFF
-					tSums[lastTrIndex*4+1] += int(g*uint32(math.Pow(2, 8))) / 0xFFFF * 0xFF
-					tSums[lastTrIndex*4+2] += int(b*uint32(math.Pow(2, 4))) / 0xFFFF * 0xFF
-					tSums[lastTrIndex*4+3] += int(a) / 0xFFFF * 0xFF
+					tSums[lastTrIndex*3] += int(r)
+					tSums[lastTrIndex*3+1] += int(g)
+					tSums[lastTrIndex*3+2] += int(b)
 					tPixs[lastTrIndex]++
 				}
 			}
 			if notLast {
 				for trIndex, tr := range ts {
 					if tr.ContainsPoint(point) {
-						tSums[trIndex*4] += int(r*uint32(math.Pow(2, 12))) / 0xFFFF * 0xFF
-						tSums[trIndex*4+1] += int(g*uint32(math.Pow(2, 8))) / 0xFFFF * 0xFF
-						tSums[trIndex*4+2] += int(b*uint32(math.Pow(2, 4))) / 0xFFFF * 0xFF
-						tSums[trIndex*4+3] += int(a) / 0xFFFF * 0xFF
+						tSums[trIndex*3] += int(r)
+						tSums[trIndex*3+1] += int(g)
+						tSums[trIndex*3+2] += int(b)
 						tPixs[trIndex]++
 						lastTr = tr
 						lastTrIndex = trIndex
@@ -378,17 +379,15 @@ func main() {
 		if pixs == 0 {
 			continue
 		}
-		rSum := tSums[tIndex*4]
-		gSum := tSums[tIndex*4+1]
-		bSum := tSums[tIndex*4+2]
-		aSum := tSums[tIndex*4+3]
+		rSum := tSums[tIndex*3]
+		gSum := tSums[tIndex*3+1]
+		bSum := tSums[tIndex*3+2]
 		r := rSum / pixs / int(math.Pow(2, 12))
 		g := gSum / pixs / int(math.Pow(2, 8))
 		b := bSum / pixs / int(math.Pow(2, 4))
-		a := aSum / pixs
 		d := t.GetPathData()
-		svgElem += "<path stroke=\"none\" fill=\"rgba("
-		svgElem += strconv.FormatInt(int64(r), 10) + "," + strconv.FormatInt(int64(g), 10) + "," + strconv.FormatInt(int64(b), 10) + "," + strconv.FormatInt(int64(a), 10)
+		svgElem += "<path stroke=\"none\" fill=\"rgb("
+		svgElem += strconv.FormatInt(int64(r), 10) + "," + strconv.FormatInt(int64(g), 10) + "," + strconv.FormatInt(int64(b), 10)
 		svgElem += ")\" d=\""
 		svgElem += d
 		svgElem += "\"/>"

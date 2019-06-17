@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"image/color"
 	"image/jpeg"
 	"math/rand"
@@ -11,311 +12,87 @@ import (
 
 	"github.com/vap0r1ze/PolyMaker/shapes"
 
-	"github.com/anthonynsimon/bild/effect"
 	"github.com/fogleman/delaunay"
 )
 
 func main() {
-	var index int
+	var (
+		bounds     image.Rectangle
+		content    *os.File
+		curPoint   delaunay.Point
+		curVal     string
+		err        error
+		img        image.Image
+		index      int
+		inputFile  string
+		pointCount int
+		points     []delaunay.Point
+		pointsStr  string
+		t          *delaunay.Triangulation
+	)
 	rand.Seed(time.Now().UTC().UnixNano())
 
-	if len(os.Args) < 7 {
+	if len(os.Args) < 4 {
 		fmt.Println("not enough args")
 		return
 	}
-	lineLow, err := strconv.Atoi(os.Args[1])
-	lineHigh, err := strconv.Atoi(os.Args[2])
-	linePointCount, err := strconv.Atoi(os.Args[3])
-	randPointCount, err := strconv.Atoi(os.Args[4])
-	edgePointCount, err := strconv.Atoi(os.Args[5])
-	pointMargin, err := strconv.Atoi(os.Args[6])
+
+	inputFile = os.Args[1]
+	content, err = os.Open(inputFile)
 	if err != nil {
-		fmt.Println("could not parse arg")
+		fmt.Println("error opening file:")
 		fmt.Println(err)
 		return
 	}
 
-	var (
-		faces           [][]delaunay.Point
-		facePointsCount int
-	)
-	if len(os.Args) > 7 {
-		var curVal string
+	pointsStr = os.Args[2]
 
-		faceCount, err := strconv.Atoi(os.Args[8])
-		if err != nil {
-			fmt.Println("could not parse arg")
-			fmt.Println(err)
-			return
-		}
-
-		facePointCountsStr := os.Args[9]
-
-		faces = make([][]delaunay.Point, faceCount)
-		facePointCounts := make([]int, faceCount)
-
-		index = 0
-		for _, b := range facePointCountsStr + "\x00" {
-			// if strIndex >= len(facePointCountsStr) {
-			// 	break
-			// }
-			if b == ',' || b == 0 {
-				val, err := strconv.Atoi(curVal)
-				if err != nil {
-					fmt.Println("could not parse arg")
-					fmt.Println(err)
-					return
-				}
-				facePointCounts[index] = val
-				curVal = ""
-				index++
-			} else {
-				curVal += string(b)
-			}
-		}
-
-		for _, cnt := range facePointCounts {
-			facePointsCount += cnt
-		}
-
-		facePointsStr := os.Args[7]
-
-		index = 0
-		pointIndex := 0
-		curFace := make([]delaunay.Point, facePointCounts[index])
-		curPoint := delaunay.Point{}
-		curVal = ""
-		for _, b := range facePointsStr + "\x00" {
-			if b == ';' || b == 0 {
-				val, err := strconv.Atoi(curVal)
-				if err != nil {
-					fmt.Println("could not parse arg")
-					fmt.Println(err)
-					return
-				}
-				curVal = ""
-				curPoint.Y = float64(val)
-				curFace[pointIndex] = curPoint
-				curPoint = delaunay.Point{}
-				pointIndex++
-				continue
-			}
-			if b == '|' {
-				val, err := strconv.Atoi(curVal)
-				if err != nil {
-					fmt.Println("could not parse arg")
-					fmt.Println(err)
-					return
-				}
-				curVal = ""
-				curPoint.Y = float64(val)
-				curFace[pointIndex] = curPoint
-				faces[index] = curFace
-				curPoint = delaunay.Point{}
-				index++
-				pointIndex = 0
-				curFace = make([]delaunay.Point, facePointCounts[index])
-				continue
-			}
-			if b == ',' {
-				val, err := strconv.Atoi(curVal)
-				if err != nil {
-					fmt.Println("could not parse arg")
-					fmt.Println(err)
-					return
-				}
-				curVal = ""
-				curPoint.X = float64(val)
-				continue
-			}
-			curVal += string(b)
-		}
-		faces[index] = curFace
-	}
-
-	pointCount := linePointCount + randPointCount + edgePointCount
-
-	points := make([]delaunay.Point, pointCount)
-
-	content, err := os.Open("input.jpg")
+	pointCount, err = strconv.Atoi(os.Args[3])
 	if err != nil {
-		fmt.Println("file not found")
+		fmt.Println("error parsing point count as integer:")
 		fmt.Println(err)
 		return
 	}
 
-	img, err := jpeg.Decode(content)
+	points = make([]delaunay.Point, pointCount)
+
+	for _, b := range pointsStr + "\x00" {
+		if b == ';' || b == 0 {
+			val, err := strconv.Atoi(curVal)
+			if err != nil {
+				fmt.Println("error parsing point list:")
+				fmt.Println(err)
+				return
+			}
+			curVal = ""
+			curPoint.Y = float64(val)
+			points[index] = curPoint
+			curPoint = delaunay.Point{}
+			index++
+			continue
+		}
+		if b == ',' {
+			val, err := strconv.Atoi(curVal)
+			if err != nil {
+				fmt.Println("error parsing point list:")
+				fmt.Println(err)
+				return
+			}
+			curVal = ""
+			curPoint.X = float64(val)
+			continue
+		}
+		curVal += string(b)
+	}
+
+	img, err = jpeg.Decode(content)
 	if err != nil {
 		fmt.Println("cannot decode image")
 		fmt.Println(err)
 		return
 	}
 
-	bounds := img.Bounds()
-
-	emboss := effect.Emboss(img)
-
-	linePix := make(map[delaunay.Point]bool)
-
-	for x := 0; x < bounds.Max.X; x++ {
-		for y := 0; y < bounds.Max.Y; y++ {
-			pix := emboss.At(x, y)
-			r, g, b, _ := pix.RGBA()
-			avg := int(r+g+b) / 3
-			if avg < lineLow || avg > lineHigh {
-				point := delaunay.Point{
-					X: float64(x),
-					Y: float64(y),
-				}
-				linePix[point] = true
-			}
-		}
-	}
-
-	linePixCount := len(linePix)
-	linePointIndexes := make(map[int]bool)
-	for len(linePointIndexes) < linePointCount {
-		pointIndex := rand.Intn(linePixCount)
-		linePointIndexes[pointIndex] = true
-	}
-	linePoints := make([]delaunay.Point, linePointCount)
-	index = 0
-	linePointIndex := 0
-	for point := range linePix {
-		if linePointIndexes[index] {
-			linePoints[linePointIndex] = point
-			linePointIndex++
-		}
-		index++
-	}
-
-	randPointInts := make(map[int]bool)
-	for len(randPointInts) < randPointCount {
-		pointInt := IntnMargin(bounds.Max.Y, pointMargin)*bounds.Max.X + IntnMargin(bounds.Max.X, pointMargin)
-		randPointInts[pointInt] = true
-	}
-	randPoints := make([]delaunay.Point, randPointCount)
-	index = 0
-	for pointInt := range randPointInts {
-		X := pointInt % bounds.Max.X
-		Y := pointInt / bounds.Max.X
-		randPoints[index] = delaunay.Point{
-			X: float64(X),
-			Y: float64(Y),
-		}
-		index++
-	}
-
-	edgePointInts := make(map[int]bool)
-	for len(edgePointInts) < edgePointCount {
-		var x int
-		var y int
-
-		if rand.Intn(2) == 0 {
-			x = IntnMargin(bounds.Max.X, pointMargin)
-			if rand.Intn(2) == 0 {
-				y = bounds.Max.Y
-			}
-		} else {
-			y = IntnMargin(bounds.Max.Y, pointMargin)
-			if rand.Intn(2) == 0 {
-				x = bounds.Max.X
-			}
-		}
-		pointInt := y*bounds.Max.X + x
-		edgePointInts[pointInt] = true
-	}
-	edgePoints := make([]delaunay.Point, edgePointCount)
-	index = 0
-	for pointInt := range edgePointInts {
-		X := pointInt % bounds.Max.X
-		Y := pointInt / bounds.Max.X
-		edgePoints[index] = delaunay.Point{
-			X: float64(X),
-			Y: float64(Y),
-		}
-		index++
-	}
-
-	index = 0
-	for _, point := range linePoints {
-		points[index] = point
-		index++
-	}
-	for _, point := range randPoints {
-		points[index] = point
-		index++
-	}
-	for _, point := range edgePoints {
-		points[index] = point
-		index++
-	}
-
-	notFacePoints := make(map[delaunay.Point]bool)
-	for _, point := range points {
-		p := shapes.Point{
-			X: int(point.X),
-			Y: int(point.Y),
-		}
-		var inFace bool
-		for _, facePoints := range faces {
-			t, err := delaunay.Triangulate(facePoints)
-			if err != nil {
-				fmt.Println("could not triangulate points")
-				fmt.Println(err)
-				return
-			}
-
-			ts := shapes.FromTriangulation(t)
-			for _, tr := range ts {
-				if tr.ContainsPoint(p) {
-					inFace = true
-					break
-				}
-			}
-			if inFace {
-				break
-			}
-		}
-		if !inFace {
-			notFacePoints[point] = true
-		}
-	}
-
-	points = make([]delaunay.Point, len(notFacePoints)+facePointsCount+4)
-	index = 0
-	for p := range notFacePoints {
-		points[index] = p
-		index++
-	}
-	for _, face := range faces {
-		for _, p := range face {
-			points[index] = p
-			index++
-		}
-	}
-	points[index] = delaunay.Point{
-		X: 0,
-		Y: 0,
-	}
-	index++
-	points[index] = delaunay.Point{
-		X: float64(bounds.Max.X),
-		Y: 0,
-	}
-	index++
-	points[index] = delaunay.Point{
-		X: 0,
-		Y: float64(bounds.Max.Y),
-	}
-	index++
-	points[index] = delaunay.Point{
-		X: float64(bounds.Max.X),
-		Y: float64(bounds.Max.Y),
-	}
-	index++
-
-	t, err := delaunay.Triangulate(points)
+	t, err = delaunay.Triangulate(points)
 	if err != nil {
 		fmt.Println("could not triangulate points")
 		fmt.Println(err)
@@ -324,6 +101,7 @@ func main() {
 
 	ts := shapes.FromTriangulation(t)
 
+	bounds = img.Bounds()
 	tSums := make([]int, len(ts)*3)
 	tPixs := make([]int, len(ts))
 	lastTrIndex := -1
@@ -409,20 +187,4 @@ func main() {
 
 	fmt.Println("done")
 	return
-}
-
-// IntnMargin - Generates a random integer within a certain margin
-func IntnMargin(n, margin int) int {
-	if margin >= n/2 {
-		margin = n/2 - 1
-	}
-
-	r := rand.Intn(n)
-	if r < margin {
-		r = margin
-	} else if r > (n - margin) {
-		r = n - margin
-	}
-
-	return r
 }
